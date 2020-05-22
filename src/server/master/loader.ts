@@ -86,12 +86,28 @@ function recursivelyRemoveUnreferencedBindings(path: NodePath<t.Program>): void 
     return Object.values(path.scope.bindings).filter(
       (binding) =>
         !binding.referenced ||
-        binding.referencePaths.every((refPath) => refPath.find((x) => x.node == binding.path.node)),
+        binding.referencePaths.every(
+          (refPath) =>
+            refPath.find((x) => x.node == binding.path.node) ||
+            // NOTE Find `FunctionComponent.prop = ...` expressions
+            // NOTE (!!!) dangerous transformation
+            // NOTE This only valid for react
+            // excludeProps = ['propTypes', 'defaultProps'];
+            (refPath.parentPath.isMemberExpression() && refPath.scope.block == path.node),
+        ),
     );
   };
   let bindings = getUnreferencedBindings();
   do {
-    bindings.forEach((binding) => binding.path.remove());
+    bindings.forEach((binding) => {
+      binding.referencePaths.forEach(
+        (refPath) =>
+          refPath.parentPath.isMemberExpression() &&
+          refPath.scope.block == path.node &&
+          refPath.findParent((parentPath) => !parentPath.isMemberExpression()).remove(),
+      );
+      binding.path.remove();
+    });
   } while ((bindings = getUnreferencedBindings()).length > 0);
 }
 
